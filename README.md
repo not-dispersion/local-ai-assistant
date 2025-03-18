@@ -10,7 +10,7 @@ ollama pull llama3
 Wait for Ollama to download the model.
 - Open the directory with project, create and activate virtual enviroment
 (If you don't know how to do it, here is an instruction: https://docs.python.org/3/library/venv.html).
-- Install libraries from **requirements.txt** file by running the comand
+- Install libraries from **requirements.txt** file by running the comand:
 ```
 pip install -r requirements.txt
 ```
