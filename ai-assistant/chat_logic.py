@@ -21,27 +21,19 @@ class ChatLogic:
 
     def _ensure_log_file(self):
         if not os.path.exists(self.log_file):
-            try:
-                with open(self.log_file, "w", encoding="utf-8") as f:
-                    pass
-            except Exception as e:
-                print(f"Failed to create log file: {str(e)}")
+            with open(self.log_file, "w", encoding="utf-8") as f:
+                pass  
 
     def _init_conversation(self):
-        if not any(isinstance(msg, dict) and msg.get("role") == "system" 
-                   for msg in self.current_conversation):
+        if not any(msg.get("role") == "system" for msg in self.current_conversation):
             self.current_conversation.append(self.system_prompt)
 
     def load_chat_log(self):
         if not os.path.exists(self.log_file):
             return []
-        
         try:
             with open(self.log_file, "r", encoding="utf-8") as file:
-                return [
-                    json.loads(line) for line in file 
-                    if line.strip() and "conversation" in json.loads(line)
-                ]
+                return [json.loads(line) for line in file if line.strip()]
         except Exception as e:
             print(f"Error loading chat log: {str(e)}")
             return []
@@ -64,31 +56,22 @@ class ChatLogic:
             chat_log = self.load_chat_log()
 
             for entry in chat_log:
-                if not isinstance(entry, dict) or "conversation" not in entry:
-                    continue
-
-                conversation = entry.get("conversation", [])
-                for i, message in enumerate(conversation):
-                    if not isinstance(message, dict) or message.get("role") != "user":
+                for i, message in enumerate(entry.get("conversation", [])):
+                    if message.get("role") != "user":
                         continue
-
                     content = message.get("content", "")
-                    if not content:
-                        continue
-
                     embedding = message.get("embedding", self.get_embedding(content))
                     if not embedding:
                         continue
-
+                    
                     try:
                         similarity = cosine_similarity([user_embedding], [embedding])[0][0]
                     except ValueError:
                         continue
 
                     assistant_response = next(
-                        (m.get("content", "") for m in conversation[i+1:] 
-                         if isinstance(m, dict) and m.get("role") == "assistant"),
-                        ""
+                        (m.get("content", "") for m in entry["conversation"][i+1:] 
+                        if m.get("role") == "assistant"), ""
                     )
 
                     all_matches.append({
@@ -104,17 +87,12 @@ class ChatLogic:
             )[:3]
             
             return [
-                f"- Ранее: '{self._truncate(m['content'], 75)}' → "
-                f"Ответ: '{self._truncate(m['response'], 100)}'"
+                f"- Ранее: '{m['content']}' → Ответ: '{m['response']}'"
                 for m in filtered
             ]
-        
         except Exception as e:
             print(f"Context error: {str(e)}")
             return []
-
-    def _truncate(self, text, length):
-        return (text[:length] + "...") if len(text) > length else text
 
     def send_message(self, user_input):
         try:
@@ -127,27 +105,22 @@ class ChatLogic:
                 "embedding": self.get_embedding(user_input)
             })
 
-            messages = [msg.copy() for msg in self.current_conversation 
-                        if isinstance(msg, dict)]
+            messages = [msg.copy() for msg in self.current_conversation]
             
             if context := self.find_relevant_context(user_input):
-                messages.insert(1, {
-                    "role": "system",
-                    "content": "Контекст из истории:\n" + "\n".join(context)
-                })
+                messages.insert(1, {"role": "system", "content": "Контекст из истории:\n" + "\n".join(context)})
 
             response = ollama.chat(model="llama3", messages=messages[-6:])
             ai_reply = response['message']['content']
-            
+
             self.current_conversation.append({
                 "role": "assistant",
                 "content": ai_reply,
-                "embedding": self.get_embedding(ai_reply)  # Сохранение эмбеддинга
+                "embedding": self.get_embedding(ai_reply)
             })
 
             self.save_conversation()
             return ai_reply
-        
         except Exception as e:
             print(f"Processing error: {str(e)}")
             return "Извините, произошла ошибка. Попробуйте еще раз."
@@ -156,15 +129,9 @@ class ChatLogic:
         try:
             if len(self.current_conversation) >= 2:
                 useful_messages = [
-                    {
-                        "role": msg["role"],
-                        "content": msg["content"],
-                        "embedding": msg["embedding"]  # Теперь сохраняем эмбеддинг для всех сообщений
-                    }
+                    {"role": msg["role"], "content": msg["content"], "embedding": msg.get("embedding")}
                     for msg in self.current_conversation
-                    if isinstance(msg, dict) 
-                    and msg["role"] in ("user", "assistant")
-                    and msg.get("content")
+                    if msg["role"] in ("user", "assistant")
                 ]
 
                 entry = {
@@ -174,13 +141,8 @@ class ChatLogic:
 
                 with open(self.log_file, "a", encoding="utf-8") as file:
                     file.write(json.dumps(entry, ensure_ascii=False) + "\n")
-                
-                self.current_conversation = [
-                    msg for msg in self.current_conversation 
-                    if isinstance(msg, dict) 
-                    and msg.get("role") == "system"
-                ]
 
+                self.current_conversation = [msg for msg in self.current_conversation if msg["role"] == "system"]
         except Exception as e:
             print(f"Saving error: {str(e)}")
             with open("chat_log_backup.txt", "a", encoding="utf-8") as f:
