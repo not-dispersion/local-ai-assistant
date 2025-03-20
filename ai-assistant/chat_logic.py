@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from sklearn.metrics.pairwise import cosine_similarity
 import ollama
+from file_handling import FileHandler
 
 class ChatLogic:
     def __init__(self):
@@ -13,11 +14,14 @@ class ChatLogic:
             "content": (
                 "Ты ИИ по имени Ай. Поддерживай естественный диалог без повторных приветствий. "
                 "Используй русский язык и кириллицу. Отвечай как дружелюбный помощник, "
-                "учитывая контекст текущего и предыдущих разговоров."
+                "учитывая контекст текущего и предыдущих разговоров, но не повторяй предыдущие ответы. "
+                "Старайся быть креативным и учитывать последний запрос пользователя."
             )
         }
         self._init_conversation()
         self._ensure_log_file()
+        self.file_handler = FileHandler()
+        self.file_mode_enabled = False
 
     def _ensure_log_file(self):
         if not os.path.exists(self.log_file):
@@ -81,10 +85,10 @@ class ChatLogic:
                     })
 
             filtered = sorted(
-                [m for m in all_matches if m["similarity"] > 0.55],
+                [m for m in all_matches if m["similarity"] > 0.7],
                 key=lambda x: x["similarity"], 
                 reverse=True
-            )[:3]
+            )[:2]
             
             return [
                 f"- Ранее: '{m['content']}' → Ответ: '{m['response']}'"
@@ -105,12 +109,33 @@ class ChatLogic:
                 "embedding": self.get_embedding(user_input)
             })
 
-            messages = [msg.copy() for msg in self.current_conversation]
-            
-            if context := self.find_relevant_context(user_input):
-                messages.insert(1, {"role": "system", "content": "Контекст из истории:\n" + "\n".join(context)})
+            max_context_length = 6
+            if len(self.current_conversation) > max_context_length:
+                self.current_conversation = self.current_conversation[-max_context_length:]
 
-            response = ollama.chat(model="llama3", messages=messages[-6:])
+            messages = [msg.copy() for msg in self.current_conversation]
+
+            context = []
+            if self.file_mode_enabled:
+                markdown_context = self.file_handler.find_relevant_markdown_content(user_input)
+                if markdown_context:
+                    context.append("Контекст из файлов:\n" + "\n".join(
+                        f"- Файл: '{m['file_path']}'\n  Контент: '{m['content']}'"
+                        for m in markdown_context
+                    ))
+
+            chat_context = self.find_relevant_context(user_input)
+            if chat_context:
+                context.append("Контекст из истории:\n" + "\n".join(chat_context))
+
+            if context:
+                messages.insert(1, {"role": "system", "content": "\n".join(context)})
+
+            response = ollama.chat(
+                model="llama3",
+                messages=messages,
+                options={"temperature": 0.8}
+            )
             ai_reply = response['message']['content']
 
             self.current_conversation.append({
@@ -147,3 +172,9 @@ class ChatLogic:
             print(f"Saving error: {str(e)}")
             with open("chat_log_backup.txt", "a", encoding="utf-8") as f:
                 f.write(f"[{datetime.now()}] Backup: {str(self.current_conversation)}\n")
+
+    def toggle_file_mode(self, enabled: bool):
+        self.file_mode_enabled = enabled
+        if enabled and not self.file_handler.local_folder:
+            return "Пожалуйста, укажите путь к локальной папке с markdown файлами."
+        return None

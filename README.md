@@ -1,5 +1,5 @@
 ## Warning!!
-The program (including all the required libraries and llama3 7b model pulled with Ollama) is going to take more than 7 GB of a disc space!!
+The program (including all the required libraries, llama3 7b and nomic-embed-text models pulled with Ollama) is going to take more than 7 GB of a disc space!! Python 3.10+ is required to run the program.
 
 ## How to run the code:
 - Download, install and run the Ollama. Official website - https://ollama.com/
