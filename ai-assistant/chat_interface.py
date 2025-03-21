@@ -23,10 +23,12 @@ class ChatInterface(QMainWindow):
         self.send_button = self.ui.findChild(QPushButton, "sendButton")
         self.exit_button = self.ui.findChild(QPushButton, "exitButton")
         self.file_mode_button = self.ui.findChild(QPushButton, "fileModeButton")
+        self.change_folder_button = self.ui.findChild(QPushButton, "changeFolderButton")
 
         self.send_button.clicked.connect(self.send_message)
         self.exit_button.clicked.connect(self.close)
         self.file_mode_button.clicked.connect(self.toggle_file_mode)
+        self.change_folder_button.clicked.connect(self.prompt_local_folder)
 
         self.file_mode_button.setCheckable(True)
         self.file_mode_button.setText("Enable File Mode")
@@ -38,6 +40,7 @@ class ChatInterface(QMainWindow):
         folder_path = QFileDialog.getExistingDirectory(self, "Select Local Folder")
         if folder_path:
             self.chat_logic.file_handler.save_local_folder(folder_path)
+            QMessageBox.information(self, "Success", f"Local folder set to: {folder_path}")
         else:
             QMessageBox.warning(self, "Warning", "Local folder is required for file mode.")
 
