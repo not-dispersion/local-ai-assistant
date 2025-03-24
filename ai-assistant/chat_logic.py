@@ -4,6 +4,7 @@ from datetime import datetime
 from sklearn.metrics.pairwise import cosine_similarity
 import ollama
 from file_handling import FileHandler
+from web_search import WebSearchHandler
 
 class ChatLogic:
     def __init__(self):
@@ -22,6 +23,7 @@ class ChatLogic:
         self._init_conversation()
         self._ensure_log_file()
         self.file_handler = FileHandler()
+        self.web_search_handler = WebSearchHandler()
         self.file_mode_enabled = False
 
     def _ensure_log_file(self):
@@ -128,6 +130,14 @@ class ChatLogic:
             chat_context = self.find_relevant_context(user_input)
             if chat_context:
                 context.append("Контекст из истории:\n" + "\n".join(chat_context))
+
+            if self.web_search_handler.enabled:
+                search_results = self.web_search_handler.perform_search(user_input)
+                if search_results:
+                    context.append("Результаты веб-поиска:\n" + "\n".join(
+                        f"- {res['title']} ({res['url']}): {res['content']}"
+                        for res in search_results
+                    ))
 
             if context:
                 messages.insert(1, {"role": "system", "content": "\n".join(context)})

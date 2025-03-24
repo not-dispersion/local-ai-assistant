@@ -6,7 +6,7 @@
     <x>0</x>
     <y>0</y>
     <width>500</width>
-    <height>400</height>
+    <height>450</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -42,6 +42,13 @@
      <widget class="QPushButton" name="changeFolderButton">
       <property name="text">
        <string>Change Local Folder</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QPushButton" name="webSearchButton">
+      <property name="text">
+       <string>Enable Web Search</string>
       </property>
      </widget>
     </item>

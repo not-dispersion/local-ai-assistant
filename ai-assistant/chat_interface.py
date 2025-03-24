@@ -1,4 +1,5 @@
-from PySide6.QtWidgets import QMainWindow, QTextEdit, QLineEdit, QPushButton, QVBoxLayout, QWidget, QMessageBox, QFileDialog
+from PySide6.QtWidgets import (QMainWindow, QTextEdit, QLineEdit, QPushButton, 
+                              QVBoxLayout, QWidget, QMessageBox, QFileDialog)
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile
 from chat_logic import ChatLogic
@@ -7,7 +8,7 @@ class ChatInterface(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Chat with Ai")
-        self.resize(500, 400)
+        self.resize(500, 450)
 
         ui_file = QFile("ui/chat_interface.ui")
         ui_file.open(QFile.ReadOnly)
@@ -24,14 +25,18 @@ class ChatInterface(QMainWindow):
         self.exit_button = self.ui.findChild(QPushButton, "exitButton")
         self.file_mode_button = self.ui.findChild(QPushButton, "fileModeButton")
         self.change_folder_button = self.ui.findChild(QPushButton, "changeFolderButton")
+        self.web_search_button = self.ui.findChild(QPushButton, "webSearchButton")
 
         self.send_button.clicked.connect(self.send_message)
         self.exit_button.clicked.connect(self.close)
         self.file_mode_button.clicked.connect(self.toggle_file_mode)
         self.change_folder_button.clicked.connect(self.prompt_local_folder)
+        self.web_search_button.clicked.connect(self.toggle_web_search)
 
         self.file_mode_button.setCheckable(True)
         self.file_mode_button.setText("Enable File Mode")
+        self.web_search_button.setCheckable(True)
+        self.web_search_button.setText("Enable Web Search")
 
         if not self.chat_logic.file_handler.local_folder:
             self.prompt_local_folder()
@@ -50,6 +55,11 @@ class ChatInterface(QMainWindow):
         if message:
             QMessageBox.information(self, "Information", message)
         self.file_mode_button.setText("Disable File Mode" if enabled else "Enable File Mode")
+
+    def toggle_web_search(self):
+        enabled = self.web_search_button.isChecked()
+        self.chat_logic.web_search_handler.toggle_enabled(enabled)
+        self.web_search_button.setText("Disable Web Search" if enabled else "Enable Web Search")
 
     def send_message(self):
         user_input = self.user_input_entry.text()
