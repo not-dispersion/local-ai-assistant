@@ -1,49 +1,45 @@
 import os
 import json
 from datetime import datetime
-from sklearn.metrics.pairwise import cosine_similarity
 import ollama
 from file_handling import FileHandler
 from web_search import WebSearchHandler
+from memory_handler import MemoryHandler
 
 class ChatLogic:
     def __init__(self):
-        self.log_file = "chat_log.jsonl"
         self.current_conversation = []
-        self.system_prompt = {
-            "role": "system",
-            "content": (
-                "Ты ИИ по имени Ай. Поддерживай естественный диалог без повторных приветствий. "
-                "Используй русский язык и кириллицу. Отвечай как дружелюбный помощник, "
-                "учитывая контекст текущего и предыдущих разговоров, но не повторяй предыдущие ответы. "
-                "Старайся быть креативным и учитывать последний запрос пользователя."
-                "Если какая-либо информация о пользователе была найдена в определённом файле (за исключением файла chat_log.jsonl), ты обязательно говоришь из какого файла была взята данная информация."
-            )
-        }
         self._init_conversation()
-        self._ensure_log_file()
         self.file_handler = FileHandler()
         self.web_search_handler = WebSearchHandler()
+        self.memory_handler = MemoryHandler()
         self.file_mode_enabled = False
 
-    def _ensure_log_file(self):
-        if not os.path.exists(self.log_file):
-            with open(self.log_file, "w", encoding="utf-8") as f:
-                pass  
-
     def _init_conversation(self):
-        if not any(msg.get("role") == "system" for msg in self.current_conversation):
-            self.current_conversation.append(self.system_prompt)
+        self.current_conversation = []
 
-    def load_chat_log(self):
-        if not os.path.exists(self.log_file):
-            return []
-        try:
-            with open(self.log_file, "r", encoding="utf-8") as file:
-                return [json.loads(line) for line in file if line.strip()]
-        except Exception as e:
-            print(f"Error loading chat log: {str(e)}")
-            return []
+    def generate_system_prompt(self):
+        status = []
+        if self.file_mode_enabled:
+            status.append("работа с локальными файлами: ВКЛЮЧЕНА")
+        else:
+            status.append("работа с локальными файлами: ВЫКЛЮЧЕНА")
+        
+        if self.web_search_handler.enabled:
+            status.append("веб-поиск: ВКЛЮЧЕН")
+        else:
+            status.append("веб-поиск: ВЫКЛЮЧЕН")
+
+        system_message = (
+            "Ты ИИ по имени Ай. Поддерживай естественный диалог без повторных приветствий."
+            "Используй русский язык и кириллицу. Отвечай как дружелюбный помощник, учитывая контекст текущего и предыдущих разговоров, но не повторяй предыдущие ответы."
+            "Старайся быть креативным и учитывать последний запрос пользователя.\n\n"
+            f"Текущий статус системных функций:\n- {status[0]}\n- {status[1]}\n\n"
+            "Если пользователь просит воспользоваться отключённой функцией, вежливо сообщи ему, что она отключена. Если функция включена, используй её при необходимости.\n"
+            "Если какая-либо информация о пользователе была найдена в определённом файле (за исключением файла chat_log.jsonl), обязательно указывай из какого файла была взята данная информация. Никогда не выдумывай файлы, основывайся только на реальных данных из контекста."
+            "Никогда не выдумывай информацию, если поьзователь об этом не просит напрямую. Основывай свои ответы только на реальных данных."
+        )
+        return {"role": "system", "content": system_message}
 
     def get_embedding(self, text):
         try:
@@ -55,47 +51,10 @@ class ChatLogic:
 
     def find_relevant_context(self, user_input):
         try:
-            user_embedding = self.get_embedding(user_input)
-            if not user_embedding:
-                return []
-
-            all_matches = []
-            chat_log = self.load_chat_log()
-
-            for entry in chat_log:
-                for i, message in enumerate(entry.get("conversation", [])):
-                    if message.get("role") != "user":
-                        continue
-                    content = message.get("content", "")
-                    embedding = message.get("embedding", self.get_embedding(content))
-                    if not embedding:
-                        continue
-                    
-                    try:
-                        similarity = cosine_similarity([user_embedding], [embedding])[0][0]
-                    except ValueError:
-                        continue
-
-                    assistant_response = next(
-                        (m.get("content", "") for m in entry["conversation"][i+1:] 
-                        if m.get("role") == "assistant"), ""
-                    )
-
-                    all_matches.append({
-                        "content": content,
-                        "response": assistant_response,
-                        "similarity": similarity
-                    })
-
-            filtered = sorted(
-                [m for m in all_matches if m["similarity"] > 0.7],
-                key=lambda x: x["similarity"], 
-                reverse=True
-            )[:2]
-            
+            memory_context = self.memory_handler.find_relevant_context(user_input, max_results=2)
             return [
-                f"- Ранее: '{m['content']}' → Ответ: '{m['response']}'"
-                for m in filtered
+                f"- Из итога беседы ({m['start_timestamp']} - {m['end_timestamp']}): '{m['summary']}'"
+                for m in memory_context
             ]
         except Exception as e:
             print(f"Context error: {str(e)}")
@@ -108,16 +67,19 @@ class ChatLogic:
 
             self.current_conversation.append({
                 "role": "user",
-                "content": user_input,
-                "embedding": self.get_embedding(user_input)
+                "content": user_input
             })
 
             max_context_length = 6
             if len(self.current_conversation) > max_context_length:
                 self.current_conversation = self.current_conversation[-max_context_length:]
 
-            messages = [msg.copy() for msg in self.current_conversation]
+            # Формируем список сообщений: новый актуальный system prompt + история
+            messages = [self.generate_system_prompt()] + [
+                msg.copy() for msg in self.current_conversation if msg.get("role") != "system"
+            ]
 
+            # Добавляем дополнительный контекст
             context = []
             if self.file_mode_enabled:
                 markdown_context = self.file_handler.find_relevant_markdown_content(user_input)
@@ -133,15 +95,21 @@ class ChatLogic:
 
             if self.web_search_handler.enabled:
                 search_results = self.web_search_handler.perform_search(user_input)
-                if search_results:
+                if self.web_search_handler.last_search_failed:
+                    context.append("Внимание: веб-поиск недоступен. Ответ может быть неполным.")
+                elif not search_results:
+                    context.append("Веб-поиск не дал результатов. Ответ будет дан без дополнительной информации из интернета.")
+                else:
                     context.append("Результаты веб-поиска:\n" + "\n".join(
                         f"- {res['title']} ({res['url']}): {res['content']}"
                         for res in search_results
                     ))
 
+            # Если дополнительный контекст есть, добавляем его как второй system prompt
             if context:
                 messages.insert(1, {"role": "system", "content": "\n".join(context)})
 
+            # Отправляем запрос в модель
             response = ollama.chat(
                 model="llama3",
                 messages=messages,
@@ -151,41 +119,22 @@ class ChatLogic:
 
             self.current_conversation.append({
                 "role": "assistant",
-                "content": ai_reply,
-                "embedding": self.get_embedding(ai_reply)
+                "content": ai_reply
             })
 
-            self.save_conversation()
+            self.memory_handler.add_message(user_input, ai_reply)
+            
             return ai_reply
         except Exception as e:
             print(f"Processing error: {str(e)}")
-            return "Извините, произошла ошибка. Попробуйте еще раз."
-
-    def save_conversation(self):
-        try:
-            if len(self.current_conversation) >= 2:
-                useful_messages = [
-                    {"role": msg["role"], "content": msg["content"], "embedding": msg.get("embedding")}
-                    for msg in self.current_conversation
-                    if msg["role"] in ("user", "assistant")
-                ]
-
-                entry = {
-                    "timestamp": datetime.now().isoformat(),
-                    "conversation": useful_messages
-                }
-
-                with open(self.log_file, "a", encoding="utf-8") as file:
-                    file.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
-                self.current_conversation = [msg for msg in self.current_conversation if msg["role"] == "system"]
-        except Exception as e:
-            print(f"Saving error: {str(e)}")
-            with open("chat_log_backup.txt", "a", encoding="utf-8") as f:
-                f.write(f"[{datetime.now()}] Backup: {str(self.current_conversation)}\n")
+            return "Извините, произошла ошибка. Попробуйте ещё раз."
 
     def toggle_file_mode(self, enabled: bool):
         self.file_mode_enabled = enabled
         if enabled and not self.file_handler.local_folder:
             return "Пожалуйста, укажите путь к локальной папке с markdown файлами."
         return None
+
+    def finalize(self):
+        """Вызывается при завершении работы программы"""
+        self.memory_handler.finalize()

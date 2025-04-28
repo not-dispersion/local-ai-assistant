@@ -73,3 +73,13 @@ class ChatInterface(QMainWindow):
             self.chat_display.append(f"Ai: {ai_reply}\n")
 
         self.user_input_entry.clear()
+        
+    def closeEvent(self, event):
+        """Обработчик события закрытия окна"""
+        try:
+            # Завершаем работу с памятью (сохраняем итоги)
+            self.chat_logic.finalize()
+            event.accept()
+        except Exception as e:
+            print(f"Error on close: {str(e)}")
+            event.accept()  # Все равно закрываем, даже если произошла ошибка

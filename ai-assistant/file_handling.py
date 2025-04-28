@@ -64,3 +64,4 @@ class FileHandler:
                     })
 
         return sorted(relevant_content, key=lambda x: x["similarity"], reverse=True)[:3]
+    

@@ -1,6 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from sklearn.metrics.pairwise import cosine_similarity
 import ollama
 import time
@@ -10,11 +10,13 @@ class WebSearchHandler:
         self.enabled = False
         self.max_results = 3
         self.last_search_time = 0
+        self.last_search_failed = False
         
     def toggle_enabled(self, enabled: bool):
         self.enabled = enabled
 
     def perform_search(self, query: str) -> List[Dict]:
+        self.last_search_failed = False  # Сброс флага перед новым поиском
         if not self.enabled:
             return []
 
@@ -61,6 +63,7 @@ class WebSearchHandler:
             
         except Exception as e:
             print(f"Search error: {str(e)}")
+            self.last_search_failed = True  # Ставим флаг об ошибке
             return []
 
     def _clean_ddg_url(self, url: str) -> str:
