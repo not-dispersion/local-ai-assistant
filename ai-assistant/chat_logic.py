@@ -74,12 +74,10 @@ class ChatLogic:
             if len(self.current_conversation) > max_context_length:
                 self.current_conversation = self.current_conversation[-max_context_length:]
 
-            # Формируем список сообщений: новый актуальный system prompt + история
             messages = [self.generate_system_prompt()] + [
                 msg.copy() for msg in self.current_conversation if msg.get("role") != "system"
             ]
 
-            # Добавляем дополнительный контекст
             context = []
             if self.file_mode_enabled:
                 markdown_context = self.file_handler.find_relevant_markdown_content(user_input)
@@ -105,11 +103,9 @@ class ChatLogic:
                         for res in search_results
                     ))
 
-            # Если дополнительный контекст есть, добавляем его как второй system prompt
             if context:
                 messages.insert(1, {"role": "system", "content": "\n".join(context)})
 
-            # Отправляем запрос в модель
             response = ollama.chat(
                 model="llama3",
                 messages=messages,
@@ -136,5 +132,4 @@ class ChatLogic:
         return None
 
     def finalize(self):
-        """Вызывается при завершении работы программы"""
         self.memory_handler.finalize()

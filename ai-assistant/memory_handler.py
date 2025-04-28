@@ -9,56 +9,46 @@ class MemoryHandler:
     def __init__(self):
         self.summary_log_file = "chat_summary.jsonl"
         self.embeddings_file = "chat_embeddings.jsonl"
-        self.summary_interval = 8  # Подводить итоги каждые 8 запросов
-        self.summary_max_length = 500  # Максимальная длина итога в символах
-        self.pending_messages = []  # Сообщения ожидающие подведения итогов
+        self.summary_interval = 4
+        self.summary_max_length = 500
+        self.pending_messages = []
         self._ensure_log_files()
     
     def _ensure_log_files(self):
-        """Проверяет существование файлов логов и создает их при необходимости"""
         for file_path in [self.summary_log_file, self.embeddings_file]:
             if not os.path.exists(file_path):
                 with open(file_path, "w", encoding="utf-8") as f:
                     pass
     
     def add_message(self, user_message: str, ai_reply: str):
-        """Добавляет новое сообщение в список ожидающих обработки"""
         self.pending_messages.append({
             "timestamp": datetime.now().isoformat(),
             "user_message": user_message,
             "ai_reply": ai_reply
         })
         
-        # Если накопилось достаточно сообщений, подводим итоги
         if len(self.pending_messages) >= self.summary_interval:
             self.create_and_save_summary()
     
     def create_and_save_summary(self) -> bool:
-        """Создает и сохраняет итог текущей группы сообщений"""
         if not self.pending_messages:
             return False
             
         try:
-            # Подготовка данных для создания итога
             first_timestamp = self.pending_messages[0]["timestamp"]
             last_timestamp = self.pending_messages[-1]["timestamp"]
             
-            # Формируем входные данные для создания итога
             conversation_text = ""
             for msg in self.pending_messages:
                 conversation_text += f"User: {msg['user_message']}\nAi: {msg['ai_reply']}\n\n"
             
-            # Создаем итог с помощью ollama
             summary = self._generate_summary(conversation_text)
             
-            # Проверяем длину итога и при необходимости обрезаем
             if len(summary) > self.summary_max_length:
                 summary = summary[:self.summary_max_length-3] + "..."
             
-            # Создаем эмбеддинг для итога
             summary_embedding = self.get_embedding(summary)
             
-            # Сохраняем итог и эмбеддинг в отдельные файлы
             summary_entry = {
                 "start_timestamp": first_timestamp,
                 "end_timestamp": last_timestamp,
@@ -72,14 +62,12 @@ class MemoryHandler:
                 "embedding": summary_embedding
             }
             
-            # Записываем в файлы
             with open(self.summary_log_file, "a", encoding="utf-8") as file:
                 file.write(json.dumps(summary_entry, ensure_ascii=False) + "\n")
                 
             with open(self.embeddings_file, "a", encoding="utf-8") as file:
                 file.write(json.dumps(embedding_entry, ensure_ascii=False) + "\n")
             
-            # Очищаем список ожидающих сообщений
             self.pending_messages = []
             return True
             
@@ -88,7 +76,6 @@ class MemoryHandler:
             return False
     
     def get_embedding(self, text: str) -> List[float]:
-        """Получает эмбеддинг для текста"""
         try:
             response = ollama.embeddings(model='nomic-embed-text', prompt=text)
             return response['embedding']
@@ -97,7 +84,6 @@ class MemoryHandler:
             return []
     
     def _generate_summary(self, conversation_text: str) -> str:
-        """Генерирует итог беседы с помощью LLM"""
         try:
             prompt = f"""Создай краткий итог следующей беседы между пользователем и ИИ на русском языке. 
 Выдели ключевую информацию о пользователе, его интересы и важные темы.
@@ -119,7 +105,6 @@ class MemoryHandler:
             return f"Ошибка при создании итога: {str(e)}"
     
     def find_relevant_context(self, user_input: str, max_results: int = 2) -> List[Dict]:
-        """Находит релевантный контекст из предыдущих итогов бесед"""
         relevant_context = []
         user_embedding = self.get_embedding(user_input)
         if not user_embedding:
@@ -137,7 +122,7 @@ class MemoryHandler:
             except ValueError:
                 continue
                 
-            if similarity > 0.7:  # Порог релевантности
+            if similarity > 0.7:
                 relevant_context.append({
                     "summary": summary.get("summary", ""),
                     "similarity": similarity,
@@ -145,15 +130,12 @@ class MemoryHandler:
                     "end_timestamp": summary.get("end_timestamp", "")
                 })
         
-        # Сортируем и берем наиболее релевантные
         return sorted(relevant_context, key=lambda x: x["similarity"], reverse=True)[:max_results]
     
     def load_summaries_and_embeddings(self) -> List[Dict]:
-        """Загружает итоги и соответствующие им эмбеддинги"""
         summaries = {}
         embeddings = {}
         
-        # Загружаем итоги
         try:
             with open(self.summary_log_file, "r", encoding="utf-8") as file:
                 for line in file:
@@ -164,7 +146,6 @@ class MemoryHandler:
         except Exception as e:
             print(f"Error loading summaries: {str(e)}")
         
-        # Загружаем эмбеддинги
         try:
             with open(self.embeddings_file, "r", encoding="utf-8") as file:
                 for line in file:
@@ -175,7 +156,6 @@ class MemoryHandler:
         except Exception as e:
             print(f"Error loading embeddings: {str(e)}")
         
-        # Объединяем данные
         result = []
         for key, summary in summaries.items():
             result.append({
@@ -188,6 +168,5 @@ class MemoryHandler:
         return result
     
     def finalize(self):
-        """Завершает работу с памятью, создавая итог для оставшихся сообщений"""
         if self.pending_messages:
             self.create_and_save_summary()

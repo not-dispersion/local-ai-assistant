@@ -16,7 +16,7 @@ class WebSearchHandler:
         self.enabled = enabled
 
     def perform_search(self, query: str) -> List[Dict]:
-        self.last_search_failed = False  # Сброс флага перед новым поиском
+        self.last_search_failed = False
         if not self.enabled:
             return []
 
@@ -63,7 +63,7 @@ class WebSearchHandler:
             
         except Exception as e:
             print(f"Search error: {str(e)}")
-            self.last_search_failed = True  # Ставим флаг об ошибке
+            self.last_search_failed = True
             return []
 
     def _clean_ddg_url(self, url: str) -> str:
